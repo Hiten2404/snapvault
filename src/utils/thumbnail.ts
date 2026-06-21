@@ -70,6 +70,7 @@ export function generateVideoThumbnail(videoBlob: Blob, maxDimension = 300): Pro
     const url = URL.createObjectURL(videoBlob);
 
     let isResolved = false;
+    let retryCount = 0;
 
     const cleanUp = () => {
       URL.revokeObjectURL(url);
@@ -77,16 +78,7 @@ export function generateVideoThumbnail(videoBlob: Blob, maxDimension = 300): Pro
       video.load();
     };
 
-    video.onloadedmetadata = () => {
-      // Seek to 1 second (or 0 if video is shorter) to get a meaningful frame (not black)
-      const seekTime = Math.min(1.0, video.duration || 0);
-      video.currentTime = seekTime;
-    };
-
-    video.onseeked = () => {
-      if (isResolved) return;
-      isResolved = true;
-
+    const captureFrame = () => {
       try {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -113,6 +105,44 @@ export function generateVideoThumbnail(videoBlob: Blob, maxDimension = 300): Pro
 
         canvas.width = width;
         canvas.height = height;
+
+        // Draw video frame to canvas
+        ctx.drawImage(video, 0, 0, width, height);
+
+        // Check if the canvas is completely black
+        const imgData = ctx.getImageData(0, 0, width, height).data;
+        let isAllBlack = true;
+
+        // Scan pixels at regular offsets (every 40th byte / 10th pixel) to check for color values
+        for (let i = 0; i < imgData.length; i += 40) {
+          const r = imgData[i];
+          const g = imgData[i + 1];
+          const b = imgData[i + 2];
+          if (r > 15 || g > 15 || b > 15) {
+            isAllBlack = false;
+            break;
+          }
+        }
+
+        // If it's black and we haven't hit the retry limit, wait or seek further
+        if (isAllBlack && retryCount < 4 && video.duration > 0) {
+          retryCount++;
+          if (retryCount >= 2) {
+            // Seek slightly further (e.g. 1.4s, 1.8s, 2.2s) in case of a fade-in intro
+            const nextSeek = Math.min(1.0 + (retryCount * 0.4), video.duration);
+            if (video.currentTime !== nextSeek) {
+              isResolved = false; // Reset to allow the new seeked event to trigger captureFrame
+              video.currentTime = nextSeek;
+              return;
+            }
+          }
+          setTimeout(captureFrame, 100);
+          return;
+        }
+
+        isResolved = true;
+
+        // Double draw workaround for browser rendering surface inconsistencies
         ctx.drawImage(video, 0, 0, width, height);
 
         canvas.toBlob(
@@ -133,6 +163,21 @@ export function generateVideoThumbnail(videoBlob: Blob, maxDimension = 300): Pro
       }
     };
 
+    video.onloadedmetadata = () => {
+      // Seek to 1 second (or 0 if video is shorter) to get a meaningful frame
+      const seekTime = Math.min(1.0, video.duration || 0);
+      video.currentTime = seekTime;
+    };
+
+    video.onseeked = () => {
+      if (isResolved) return;
+      isResolved = true;
+      // Use requestAnimationFrame to give the browser paint cycle time to decode/paint the frame
+      requestAnimationFrame(() => {
+        captureFrame();
+      });
+    };
+
     video.onerror = (err) => {
       if (isResolved) return;
       isResolved = true;
@@ -151,6 +196,6 @@ export function generateVideoThumbnail(videoBlob: Blob, maxDimension = 300): Pro
         cleanUp();
         reject(new Error('Video thumbnail generation timed out'));
       }
-    }, 10000);
+    }, 12000);
   });
 }
