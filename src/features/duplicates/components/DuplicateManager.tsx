@@ -114,7 +114,7 @@ export default function DuplicateManager() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white">Duplicate Detection</h1>
           <p className="text-xs text-neutral-400 mt-1">
-            Exact file matching using local SHA-256 hashes.
+            Deduplicate files using exact byte sizes and media stream signatures.
           </p>
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function DuplicateManager() {
                         <span className="rounded-md bg-neutral-900 px-2 py-0.5 text-[9px] font-black text-neutral-450 uppercase">
                           Group {groupIdx + 1}
                         </span>
-                        <span className="text-neutral-500 font-mono select-all">SHA-256: {group.sha256.substring(0, 16)}...</span>
+                        <span className="text-neutral-500 font-mono select-all">Signature: {group.id.replace('_', ' • ')} bytes</span>
                       </h3>
                       <p className="text-[10px] text-neutral-500 mt-0.5">
                         {group.memories.length} files • Combined size: {formatBytes(totalSize)}

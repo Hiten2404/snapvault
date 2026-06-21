@@ -260,7 +260,7 @@ export async function getStats(): Promise<ArchiveStats> {
   let gpsTaggedMemories = 0;
   let storageUsedBytes = 0;
 
-  const hashCount: Record<string, number> = {};
+  const sizeCount: Record<string, number> = {};
 
   memories.forEach((m) => {
     if (m.type === 'photo') totalPhotos++;
@@ -283,11 +283,13 @@ export async function getStats(): Promise<ArchiveStats> {
       storageUsedBytes += m.thumbnailBlob.size;
     }
 
-    hashCount[m.sha256] = (hashCount[m.sha256] || 0) + 1;
+    // Group duplicates by size + type to catch duplicate file streams with different metadata
+    const key = `${m.size}_${m.type}`;
+    sizeCount[key] = (sizeCount[key] || 0) + 1;
   });
 
   let duplicateCount = 0;
-  Object.values(hashCount).forEach((cnt) => {
+  Object.values(sizeCount).forEach((cnt) => {
     if (cnt > 1) {
       duplicateCount += cnt - 1;
     }
@@ -311,19 +313,22 @@ export async function getDuplicateGroups(): Promise<DuplicateGroup[]> {
   const groupsMap: Record<string, SnapchatMemory[]> = {};
 
   memories.forEach((memory) => {
-    if (!groupsMap[memory.sha256]) {
-      groupsMap[memory.sha256] = [];
+    const key = `${memory.size}_${memory.type}`;
+    if (!groupsMap[key]) {
+      groupsMap[key] = [];
     }
-    groupsMap[memory.sha256].push(memory);
+    groupsMap[key].push(memory);
   });
 
   const duplicateGroups: DuplicateGroup[] = [];
-  Object.entries(groupsMap).forEach(([sha256, list]) => {
+  Object.entries(groupsMap).forEach(([key, list]) => {
     if (list.length > 1) {
+      const sortedList = list.sort((a, b) => new Date(a.dateTaken).getTime() - new Date(b.dateTaken).getTime());
+      
       duplicateGroups.push({
-        id: sha256,
-        sha256,
-        memories: list.sort((a, b) => new Date(a.dateTaken).getTime() - new Date(b.dateTaken).getTime()),
+        id: key,
+        sha256: sortedList[0].sha256,
+        memories: sortedList,
       });
     }
   });
