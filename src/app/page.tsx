@@ -1,65 +1,154 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, useMemo } from 'react';
+import Sidebar, { SidebarTab } from '../components/Sidebar';
+import Dashboard from '../features/dashboard/components/Dashboard';
+import MemoryGallery from '../features/gallery/components/MemoryGallery';
+import TimelineView from '../features/timeline/components/TimelineView';
+import DuplicateManager from '../features/duplicates/components/DuplicateManager';
+import DownloadManager from '../features/downloads/components/DownloadManager';
+import SettingsView from '../features/settings/components/SettingsView';
+import ImportModal from '../features/import/components/ImportModal';
+import MemoryDetail from '../features/gallery/components/MemoryDetail';
+import { SnapchatMemory } from '../types';
+import { useMemories } from '../hooks/useMemories';
+import { Loader2 } from 'lucide-react';
+
+export default function RootPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { memories } = useMemories();
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<SidebarTab>('dashboard');
+
+  // Selected memories state lifted for global sync
+  const [selectedMemoryIds, setSelectedMemoryIds] = useState<Record<string, boolean>>({});
+
+  // Modal / Lightbox States
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [selectedMemory, setSelectedMemory] = useState<SnapchatMemory | null>(null);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Compute memory list for lightbox slide navigation
+  const sortedMemories = useMemo(() => {
+    return [...memories].sort(
+      (a, b) => new Date(b.dateTaken).getTime() - new Date(a.dateTaken).getTime()
+    );
+  }, [memories]);
+
+  // Handlers for sliding next/previous in details view
+  const handleNextMemory = () => {
+    if (!selectedMemory || sortedMemories.length === 0) return;
+    const currentIndex = sortedMemories.findIndex((m) => m.id === selectedMemory.id);
+    if (currentIndex !== -1 && currentIndex < sortedMemories.length - 1) {
+      setSelectedMemory(sortedMemories[currentIndex + 1]);
+    }
+  };
+
+  const handlePreviousMemory = () => {
+    if (!selectedMemory || sortedMemories.length === 0) return;
+    const currentIndex = sortedMemories.findIndex((m) => m.id === selectedMemory.id);
+    if (currentIndex > 0) {
+      setSelectedMemory(sortedMemories[currentIndex - 1]);
+    }
+  };
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-7 w-7 animate-spin text-yellow-500" />
+          <p className="text-xs text-neutral-500">Authenticating session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated' || !session) {
+    return null; // Page will redirect in useEffect
+  }
+
+  // Render tab component content
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            onTriggerImport={() => setIsImportOpen(true)}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+          />
+        );
+      case 'memories':
+        return (
+          <MemoryGallery 
+            onSelectMemory={(m) => setSelectedMemory(m)} 
+            selectedMemoryIds={selectedMemoryIds}
+            setSelectedMemoryIds={setSelectedMemoryIds}
+          />
+        );
+      case 'timeline':
+        return (
+          <TimelineView 
+            onSelectMemory={(m) => setSelectedMemory(m)} 
+            selectedMemoryIds={selectedMemoryIds}
+            setSelectedMemoryIds={setSelectedMemoryIds}
+          />
+        );
+      case 'duplicates':
+        return <DuplicateManager />;
+      case 'downloads':
+        return (
+          <DownloadManager 
+            selectedMemoryIds={selectedMemoryIds}
+            setSelectedMemoryIds={setSelectedMemoryIds}
+          />
+        );
+      case 'settings':
+        return <SettingsView />;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="flex min-h-screen flex-col md:flex-row bg-neutral-950">
+      {/* Sidebar Navigation */}
+      <Sidebar activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab)} />
+
+      {/* Main Panel Content Area */}
+      <main className="flex-1 overflow-y-auto px-4 py-8 md:px-8 max-w-7xl mx-auto w-full">
+        {renderTabContent()}
       </main>
+
+      {/* ZIP Import Wizard Overlay */}
+      <ImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} />
+
+      {/* Lightbox Details Panel Overlay */}
+      {selectedMemory && (
+        <MemoryDetail
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNext={
+            sortedMemories.findIndex((m) => m.id === selectedMemory.id) < sortedMemories.length - 1
+              ? handleNextMemory
+              : undefined
+          }
+          onPrevious={
+            sortedMemories.findIndex((m) => m.id === selectedMemory.id) > 0
+              ? handlePreviousMemory
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
